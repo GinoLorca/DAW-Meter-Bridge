@@ -1,0 +1,27 @@
+# macOS
+.DS_Store
+._*
+
+# Editors
+.vscode/
+.idea/
+*.swp
+
+# Xcode
+xcuserdata/
+DerivedData/
+*.xcuserstate
+
+# Build output
+build/
+cmake-build-*/
+dist/
+out/
+
+# Dependencies
+node_modules/
+.build/
+
+# Local environment
+.env
+.env.local
