@@ -57,10 +57,20 @@ extension AppController {
         sourceKind == .simulator ? simulator : nil
     }
 
-    /// The meter calibration for the current source: the measured Live table from the settings while the
-    /// source is Live (when there is one), else linear amplitude. Drives the dB readouts and the clip LEDs.
+    /// The meter calibration for the current source. Drives the dB readouts and the clip LEDs.
+    /// Live: a table from the settings if there is one, else the built-in measurement for the connected
+    /// Live version (known once the script's hello arrives), else uncalibrated. The simulator emits Live
+    /// 12's scale, so it uses the Live 12 measurement.
     func applyMeterCalibration() {
-        let calibration = (sourceKind == .live ? settings.liveMeterCalibration : nil) ?? .uncalibrated
+        let calibration: MeterCalibration
+        switch sourceKind {
+        case .live:
+            calibration = settings.liveMeterCalibration
+                ?? MeterCalibration.ableton(version: live?.liveVersion)
+                ?? .uncalibrated
+        case .simulator:
+            calibration = .ableton12
+        }
         guard calibration != store.calibration else { return }
         store.calibration = calibration
         if !isHeadless { panelManager.setCalibration(calibration) }
@@ -129,6 +139,8 @@ extension AppController: MeterSourceDelegate {
             store.retain(only: Set(newSnapshot.tracks.map(\.id)))
         }
         updateWatchedTracks()
+        // The Live version arrives with the script's hello; switch to its measured calibration then.
+        applyMeterCalibration()
         keepAwake(for: 0.05)
         if old.connection != newSnapshot.connection || old.warnings != newSnapshot.warnings
             || old.units != newSnapshot.units || old.tracks.count != newSnapshot.tracks.count {

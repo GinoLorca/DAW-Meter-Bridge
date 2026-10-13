@@ -46,6 +46,39 @@ public struct MeterCalibration: Hashable, Sendable, Codable {
     /// Default until measured: value is linear amplitude, so dBFS = 20·log10(value).
     public static let uncalibrated = MeterCalibration()
 
+    /// Live's meter floor and ceiling: value 0 is -70 dBFS and value 1 is +6 dBFS.
+    public static let liveFloorDecibels: Float = -70
+    public static let liveCeilingDecibels: Float = 6
+
+    /// Ableton Live 12's track meter, measured in Live 12.4.6 on 2026-10-13 with a 997 Hz sine at 19
+    /// known levels (docs/research/05-live-meter-calibration.md). The value is linear in dB from -70 dBFS
+    /// (0) to +6 dBFS (1): `value = (dBFS + 70) / 76`, so 0 dBFS reads 0.92105. The script rounds values
+    /// to 4 decimals, which makes a full-scale sine arrive as 0.9211; the clip LED latches from 0.9212,
+    /// i.e. only above 0 dBFS.
+    public static let ableton12 = MeterCalibration(
+        points: [
+            Point(value: 0, decibels: liveFloorDecibels),
+            Point(value: 1, decibels: liveCeilingDecibels),
+        ],
+        clipValue: 0.9212,
+        isMeasured: true
+    )
+
+    /// The measured calibration for a Live version such as "12.4.6", or nil when that version has not
+    /// been measured (Live 11 and anything newer than 12 keep the uncalibrated readouts until checked).
+    public static func ableton(version: String?) -> MeterCalibration? {
+        guard let major = version?.split(separator: ".").first.flatMap({ Int($0) }) else { return nil }
+        return major == 12 ? .ableton12 : nil
+    }
+
+    /// Live's meter value for a level in dBFS: the inverse of `ableton12`, clamped to 0...1.
+    /// `nil` (silence) and anything at or below the -70 dB floor give 0.
+    public static func liveMeterValue(decibels: Double?) -> Double {
+        guard let decibels, decibels.isFinite else { return 0 }
+        let floor = Double(liveFloorDecibels), span = Double(liveCeilingDecibels - liveFloorDecibels)
+        return min(max((decibels - floor) / span, 0), 1)
+    }
+
     /// dBFS for a meter value; nil means silence (-inf).
     public func decibels(for value: Float) -> Float? {
         guard value > 0.000_01 else { return nil }

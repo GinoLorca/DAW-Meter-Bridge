@@ -165,9 +165,13 @@ struct SimulatedMeterEngine: Sendable {
             + 0.22 * sendInput(delaySends, at: beat - 2.25, frame: frame)
     }
 
+    /// Converts a linear amplitude (1 = 0 dBFS) to Live's meter scale, as Live 12 reports it
+    /// (`MeterCalibration.ableton12`: linear in dB from -70 to +6 dBFS), rounded to 4 decimals like the
+    /// script sends it. Overs above 0 dBFS read above 0.92105, so the clip LED behaves as with Live.
     static func wireValue(_ value: Double) -> Double {
         guard value.isFinite, value > 0 else { return 0 }
-        return (min(value, 1) * 10_000).rounded() / 10_000
+        let meter = MeterCalibration.liveMeterValue(decibels: 20 * log10(value))
+        return (meter * 10_000).rounded() / 10_000
     }
 }
 

@@ -51,7 +51,11 @@ The UF8 and the WING Mackie setups should not be enabled in Live at the same tim
 | `MeterBridge/volume_curve.py` | The 101-point `hello.vc` curve from `str_for_value` |
 | `MeterBridge/log.py` | Rate-limited logging |
 | `tools/fake_live.py` | Fake Live harness (see below) |
+| `tools/make_calibration_tone.py` | Writes the meter-calibration test tone: a 997 Hz sine at 19 known levels |
+| `tools/capture_meters.py` | Stands in for the app, records a track's meter while the tone plays, and prints the dB table |
 | `tests/` | Unit and end-to-end tests |
+
+To measure how Live's meter values map to dBFS, see [docs/research/05-live-meter-calibration.md](../docs/research/05-live-meter-calibration.md). Live 12 is already measured and built into the app.
 
 Only Python 3.7 syntax and stdlib are allowed: no walrus, no `match`, no positional-only parameters, no annotations. A test enforces this.
 

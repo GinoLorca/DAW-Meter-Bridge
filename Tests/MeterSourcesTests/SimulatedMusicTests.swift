@@ -8,6 +8,14 @@ import Testing
 struct SimulatedMusicTests {
     let specs = SimulatedTrackSpec.defaultSession
 
+    /// Live 12 meter value for a linear amplitude: the simulator reports Live's scale (linear in dB).
+    func meter(amplitude: Double) -> Double {
+        MeterCalibration.liveMeterValue(decibels: 20 * log10(amplitude))
+    }
+
+    /// Values at or above this light the clip LED (just above 0 dBFS).
+    let clipValue = Double(MeterCalibration.ableton12.clipValue)
+
     /// Peak of left/right per track for each 30 Hz frame over `seconds` at 120 BPM.
     func frames(seed: UInt64, seconds: Double, mix: SimulatedMix? = nil) -> [[Double]] {
         let engine = SimulatedMeterEngine(specs: specs, seed: seed)
@@ -26,25 +34,25 @@ struct SimulatedMusicTests {
     @Test func songReachesTheRedAndRarelyClips() {
         let all = frames(seed: SimulatedSource.defaultSeed, seconds: 180) // about three times the 32-bar loop
         let values = all.flatMap { $0 }
-        let red = values.filter { $0 >= 0.9 }.count
-        let clips = values.filter { $0 >= 0.999 }.count
+        let red = values.filter { $0 >= meter(amplitude: 0.9) }.count
+        let clips = values.filter { $0 >= clipValue }.count
         #expect(red > 0)
         #expect(clips > 0)
         #expect(Double(red) / Double(values.count) < 0.05)
         #expect(Double(clips) / Double(values.count) < 0.002)
         // Every track makes sound at some point, and Main is never silent for long.
         for track in specs.indices {
-            #expect(all.contains { $0[track] > 0.05 }, "\(specs[track].name) never sounds")
+            #expect(all.contains { $0[track] > meter(amplitude: 0.05) }, "\(specs[track].name) never sounds")
         }
         let main = specs.count - 1
-        #expect(all.filter { $0[main] < 0.05 }.count < all.count / 50)
+        #expect(all.filter { $0[main] < meter(amplitude: 0.05) }.count < all.count / 50)
     }
 
     @Test func clipsComeFromDrumsAndMainStaysBelowFullScale() {
         let all = frames(seed: SimulatedSource.defaultSeed, seconds: 120)
         let main = specs.count - 1
-        #expect(all.allSatisfy { $0[main] < 0.999 })
-        #expect(all.contains { $0[main] > 0.75 })
+        #expect(all.allSatisfy { $0[main] < clipValue })
+        #expect(all.contains { $0[main] > meter(amplitude: 0.75) })
     }
 
     @Test func valuesStayInRangeWithFourDecimalsEvenAtFullVolume() {

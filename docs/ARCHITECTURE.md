@@ -148,6 +148,9 @@ One running copy per data folder: the app holds an exclusive `flock` on `.meterb
 
 These come from the research's UNVERIFIED list and need checking on the actual setup:
 1. **UF8 bank step.** Live slots 4–6 hold port-less `MackieControlXT` entries left over from the WING setup. They probably make the UF8 bank by 32 instead of 8. Remove them, which also frees a slot for MeterBridge.
-2. **Meter calibration.** The mapping of Live's 0..1 meter value to dBFS is undocumented. Calibrate it with test tones and store the result as a `MeterCalibration` (points plus the clip threshold `clipValue`) in the settings key `liveMeterCalibration`; the app applies it while the source is Live. Meter **height** uses Live's own scale, so it matches Live's meters even before calibration; only the numeric dB readout and the clip LED depend on it.
+2. **Meter calibration. Done for Live 12 (2026-10-13).** Measured with a test tone in Live 12.4.6: the meter value is linear in dB, `value = (dBFS + 70) / 76`. The details are in [research/05-live-meter-calibration.md](research/05-live-meter-calibration.md).
+   - The app uses the built-in `MeterCalibration.ableton12` when the script reports Live 12. A table in the settings key `liveMeterCalibration` overrides it.
+   - Live 11 is still unmeasured; repeat the procedure in that doc to measure it.
+   - Meter **height** always uses Live's own scale.
 3. **Load.** Measure the real meter update rate and Live GUI load with 24+ tracks observed.
 4. **UF8 layer.** The bridge cannot tell whether the UF8 is on another DAW layer or in the Plug-in Mixer.

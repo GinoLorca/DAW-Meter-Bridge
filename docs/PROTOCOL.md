@@ -101,7 +101,7 @@ The record is complete, not a diff. The script coalesces changes and sends at mo
 {"v":1,"t":"m","seq":5531,"d":[[140523312345,0.6123,0.5871],[140523319999,0.0,0.0]]}
 ```
 - **Rate:** about `hz` times per second (the default 30).
-- **Values:** Live's own normalized meter scale, 0..1, from `output_meter_left` / `output_meter_right`, rounded to 4 decimals.
+- **Values:** Live's own normalized meter scale, 0..1, from `output_meter_left` / `output_meter_right`, rounded to 4 decimals. In Live 12 this scale is linear in dB: `value = (dBFS + 70) / 76`, measured in [research/05-live-meter-calibration.md](research/05-live-meter-calibration.md).
   - For a track without audio output, both values are `output_meter_level`.
   - The app draws meter height directly from these values, so the bridge matches Live's meters. The dB readout and the clip LED threshold go through the app's `MeterCalibration`.
 - **Which tracks are included:** the union of

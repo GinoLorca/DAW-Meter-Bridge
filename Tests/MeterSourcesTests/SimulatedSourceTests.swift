@@ -265,8 +265,11 @@ struct SimulatedSourceTests {
             between.append(source.advance(by: 0.24).first { $0.id == kick }?.left ?? 0)
             source.advance(by: 0.25)
         }
-        #expect(onBeat.allSatisfy { $0 > 0.6 })
-        #expect(between.allSatisfy { $0 < 0.25 })
+        // Meters use Live 12's scale (linear in dB), so compare against amplitudes 0.6 and 0.25.
+        let loud = Float(MeterCalibration.liveMeterValue(decibels: 20 * log10(0.6)))
+        let soft = Float(MeterCalibration.liveMeterValue(decibels: 20 * log10(0.25)))
+        #expect(onBeat.allSatisfy { $0 > loud })
+        #expect(between.allSatisfy { $0 < soft })
     }
 
     @Test func tempoSetsTheBeatRate() {
@@ -311,9 +314,13 @@ struct SimulatedSourceTests {
         let c = try levels(silent, "Bass", seconds: 4)
         #expect(a.max()! > 0.5)
         #expect(c.allSatisfy { $0 == 0 })
-        let gain = pow(10, (VolumeCurve.liveApproximation.decibels(atNormalized: 0.55)! - VolumeCurve.liveApproximation.decibels(atNormalized: 0.84)!) / 20)
-        for (loudLevel, quietLevel) in zip(a, b) where loudLevel > 0.05 {
-            #expect(abs(Double(quietLevel) - Double(loudLevel) * gain) < 0.002)
+        // Live 12's meter is linear in dB, so the fader's gain shifts the value by gainDB / 76.
+        let gainDB = VolumeCurve.liveApproximation.decibels(atNormalized: 0.55)!
+            - VolumeCurve.liveApproximation.decibels(atNormalized: 0.84)!
+        for (loudLevel, quietLevel) in zip(a, b) where loudLevel > 0.3 {
+            let loudDB = Double(MeterCalibration.ableton12.decibels(for: loudLevel)!)
+            let expected = MeterCalibration.liveMeterValue(decibels: loudDB + gainDB)
+            #expect(abs(Double(quietLevel) - expected) < 0.0003)
         }
     }
 
