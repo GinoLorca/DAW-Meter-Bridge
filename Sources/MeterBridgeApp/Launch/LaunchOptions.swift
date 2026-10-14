@@ -1,3 +1,4 @@
+import BridgeControl
 import Foundation
 
 /// Where meters come from.
@@ -17,7 +18,7 @@ enum SourceKind: String, Codable, CaseIterable, Sendable {
 /// Command-line options of the app.
 ///
 /// ```
-/// MeterBridge [--source simulator|live] [--snapshot <dir>] [--reset-layout] [--data-dir <dir>]
+/// MeterBridge [--source simulator|live] [--snapshot <dir>] [--reset-layout] [--data-dir <dir>] [--control-port <n>]
 /// ```
 struct LaunchOptions: Equatable, Sendable {
     /// Source to start with; nil = the last one used, else the simulator.
@@ -30,6 +31,8 @@ struct LaunchOptions: Equatable, Sendable {
     var resetLayout = false
     /// Keep layouts.json and settings in this folder instead of Application Support and UserDefaults.
     var dataDirectory: URL?
+    /// UDP port of the control protocol on 127.0.0.1 (docs/CONTROL.md; the Stream Deck plugin uses 47802).
+    var controlPort: UInt16 = ControlProtocol.defaultPort
     /// Print usage and quit.
     var showHelp = false
     /// Hidden `--demo-edit <dir>`: enter edit mode, drive scripted moves, resizes, keys and a calibration
@@ -49,6 +52,8 @@ struct LaunchOptions: Equatable, Sendable {
                                 or .before-reset.1.bak, .2.bak, ... when that exists)
       --data-dir <dir>          Keep layouts.json and settings.json in <dir> instead of
                                 ~/Library/Application Support and the app's defaults
+      --control-port <n>        Listen for the Stream Deck control protocol on 127.0.0.1:<n>
+                                (default 47802; for test runs beside the installed app)
       --help                    Show this help
     """
 
@@ -105,6 +110,12 @@ struct LaunchOptions: Equatable, Sendable {
                 options.resetLayout = true
             case "--demo-edit":
                 options.demoEditDirectory = URL(fileURLWithPath: try value(for: name, inline: inline), isDirectory: true).standardizedFileURL
+            case "--control-port":
+                let text = try value(for: name, inline: inline)
+                guard let port = UInt16(text), port > 0 else {
+                    throw .invalidValue(name, text)
+                }
+                options.controlPort = port
             case "--data-dir":
                 options.dataDirectory = URL(fileURLWithPath: try value(for: name, inline: inline), isDirectory: true).standardizedFileURL
             case "--help", "-h":

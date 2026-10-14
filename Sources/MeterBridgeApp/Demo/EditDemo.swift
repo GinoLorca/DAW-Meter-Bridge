@@ -80,9 +80,31 @@ final class EditDemo {
         let scale = display.backingScale
         let pixel = 1 / scale
         let firstRun = controller.document.activeProfile?.allGroups ?? []
-        record("first-run Bronx profile is the UF8 | UF1 row",
-               firstRun.map(\.name) == ["UF8", "UF1"] && firstRun.last?.binding == .selectedTrack && first.group.name == "UF8",
-               "UF8, UF1 (selected track)", firstRun.map { "\($0.name) (\($0.binding))" }.joined(separator: ", "))
+        record("first-run Bronx profile is the UF8 | UF1 row plus the Main meter",
+               firstRun.map(\.name) == ["UF8", "UF1", "Main"] && firstRun.dropLast().last?.binding == .selectedTrack
+                   && firstRun.last?.binding == .mainTrack && first.group.name == "UF8",
+               "UF8, UF1 (selected track), Main (main track)", firstRun.map { "\($0.name) (\($0.binding))" }.joined(separator: ", "))
+        if let main = firstRun.last, main.binding == .mainTrack {
+            let edge = display.localBounds.maxX - main.frame.maxX
+            record("the Main meter stands at the display's right edge, level with the UF8",
+                   main.isVisible && abs(edge - MainMeter.margin) < 1 && main.frame.minY == first.group.frame.minY
+                       && main.frame.height == first.group.frame.height,
+                   "\(EditDemo.text(MainMeter.margin)) pt from the edge, y \(EditDemo.text(first.group.frame.minY))",
+                   "\(EditDemo.text(edge)) pt from the edge, y \(EditDemo.text(main.frame.minY)), visible \(main.isVisible)")
+            // Hide and show it like the menu item and the Stream Deck key: it comes back where it was.
+            controller.setMainMeterVisible(false)
+            let hidden = controller.document.activeProfile?.group(withID: main.id)
+            record("Hide Main Meter keeps the group, hidden",
+                   hidden?.isVisible == false && hidden?.frame == main.frame && !controller.isMainMeterVisible
+                       && !controller.presentation.placements.contains { $0.group.id == main.id },
+                   "hidden, same frame", "visible \(String(describing: hidden?.isVisible)), frame \(String(describing: hidden?.frame))")
+            controller.setMainMeterVisible(true)
+            let shown = controller.document.activeProfile?.group(withID: main.id)
+            record("Show Main Meter brings it back in place",
+                   shown?.isVisible == true && shown?.frame == main.frame && controller.isMainMeterVisible,
+                   "visible, same frame", "visible \(String(describing: shown?.isVisible)), frame \(String(describing: shown?.frame))")
+            controller.layoutHistory.removeAll()
+        }
         await snapshot("01-start-bridge-mode", group: id)
 
         // Edit mode on.

@@ -15,6 +15,8 @@ Research behind these decisions is in [`research/`](research/). Start with [`res
 | Fine control | Shift gives fine control for layout edits (move/resize) and for volume drags. |
 | Displays | Develop and test on a strip along the bottom of the main LG ultrawide, which sits directly behind the UF8. Later, move the bridge to a dedicated bar display (12.6" 1920×515 or 14.1" 3840×1100) and recalibrate. |
 | Hide | Global hotkey (default ⌃⌥⌘M) and menu-bar item. |
+| Main meter | The Main (master) track's meter at the right edge of the bridge display, switched on and off from the menu, a Stream Deck key or a URL (added 2026-10-13). |
+| Stream Deck | Keys that show/hide the bridge and the Main meter and follow the app's real state ([CONTROL.md](CONTROL.md)). |
 
 ## Key decision: an Ableton Remote Script, not an MCU proxy
 
@@ -51,10 +53,15 @@ The MCU/HUI proxy stays in the plan for Pro Tools (HUI), which has no meter API.
 ┌───────────────▼───────────────────────────┴──────────────────┐
 │ DAW Meter Bridge.app (Swift, AppKit, menu-bar only)          │
 │  MeterSources → BridgeModel → MeterRendering → bank panels   │
+│  BridgeControl: control server, dawmeterbridge:// URLs       │
+└───────────────▲───────────────────────────┬──────────────────┘
+      UDP 127.0.0.1:47802 (ctl.sub, ctl)    │ ctl.state (to the client's port)
+┌───────────────┴───────────────────────────▼──────────────────┐
+│ Stream Deck plugin (Node, StreamDeckPlugin/), or any client  │
 └──────────────────────────────────────────────────────────────┘
 ```
 
-The wire format is specified in [PROTOCOL.md](PROTOCOL.md).
+The Live wire format is specified in [PROTOCOL.md](PROTOCOL.md), the control protocol and URL scheme in [CONTROL.md](CONTROL.md).
 
 ## Swift package layout
 
@@ -65,7 +72,9 @@ Dependencies point downward only:
 ```
 MeterBridgeApp (executable)  menu bar, panels, edit mode, hotkey, settings, display manager, persistence wiring
  ├─ MeterRendering           Core Animation strip/bank views, display-link driver, styling
- ├─ BridgeLayout             layout model (strip groups, bindings, templates), calibration and edit math, JSON persistence
+ ├─ BridgeLayout             layout model (strip groups, bindings, templates, Main meter), calibration and edit math, JSON persistence
+ ├─ BridgeControl            control protocol (ctl messages, subscribers, UDP server) and dawmeterbridge:// URLs
+ │   └─ MeterSources         (for its UDPEndpoint)
  ├─ MeterSources             MeterSource implementations: SimulatedSource, LiveSource (UDP)
  │   └─ BridgeProtocol       wire messages (Codable) for the Live script ⇄ app protocol
  └─ MeterCore                track/snapshot model, BridgeCommand, MeterSource protocol, ballistics, mix focus, volume curve
@@ -75,10 +84,11 @@ MeterBridgeApp (executable)  menu bar, panels, edit mode, hotkey, settings, disp
 |---|---|---|
 | MeterCore | No | Yes |
 | BridgeProtocol | No | Yes |
-| MeterSources | No (Network.framework) | Yes |
+| MeterSources | No (BSD sockets + Dispatch) | Yes |
 | BridgeLayout | No (CoreGraphics types only) | Yes |
+| BridgeControl | No | Yes (coding, URLs, subscribers, loopback UDP) |
 | MeterRendering | Yes | Smoke |
-| MeterBridgeApp | Yes | Manual/run |
+| MeterBridgeApp | Yes | Manual/run, `--snapshot`, `--demo-edit` |
 
 ## Data model
 
@@ -94,6 +104,8 @@ The bridge is made of **strip groups**. Each group is one borderless panel holdi
 - `surfaceUnit(index, firstStrip)`: strips of a hardware unit. "UF8" is one group of 8 on unit 0.
 - `selectedTrack` / `mainTrack`: a single focus meter, e.g. above the UF1.
 - `trackList(offset)`: consecutive tracks, used when no surface is present (simulator, or extra context strips).
+
+**The Main meter** is every group bound to `mainTrack` (`BridgeLayout/MainMeter.swift`). "Show Main Meter" (menu, Stream Deck, `dawmeterbridge://main/…`) makes those groups visible or hidden; hiding keeps their frames, so the meter comes back where the user left it. When a profile has none, showing it adds one along the right edge of the display holding the profile's first visible group: same bottom and height as that group, about 1.5 of its strip pitches wide (90 pt without one) and at most a quarter of the display wide, 8 pt from the edge, pixel-snapped, narrowed or lifted if another group is in the way (overlapping it when neither fits). "Move Bridge to…" re-anchors it at the new display's right edge (`reanchorMainMeters`), and a Main group left entirely off its display doesn't count as shown. Both first-run profiles have a visible one; version 0.2.0 adds one once to existing profiles that have none (settings key `mainMetersAdded`, so a Main meter the user deletes stays deleted). The script always meters the main track, so it never goes in the `watch` list, and its strip has no S/M buttons.
 
 Groups of any size let the layout follow uneven hardware. The WING's DAW mode maps three 8-strip MCU units across fader sections of 12 + 8 + 4. Its faders come in blocks of four with a wider gap between blocks, so its template is six groups of four: L1–4, L5–8, L9–12, C1–4, C5–8 and R1–4. Each group's meters sit within about 0.4 mm of their faders; one L1–8 group would be up to about 5 mm off.
 
@@ -134,13 +146,26 @@ A volume drag always goes to the track grabbed at mouse-down, even if the bank c
 
 One `CADisplayLink` per display drives rendering, and it idles when all meters have decayed.
 
+## App control (Stream Deck, URLs)
+
+[CONTROL.md](CONTROL.md) is the contract. In the app:
+- `BridgeControl.ControlServer` listens on UDP 127.0.0.1:47802 (`--control-port <n>` for test copies), keeps up to 8 clients for 6 s after their last `ctl.sub`, answers every `ctl.sub` and `ctl` with `ctl.state`, and pushes `ctl.state` to the subscribers when the bridge, the Main meter, edit mode, the source or its connection changes (`AppController.onStatusChange`). Socket I/O runs on a private queue and hops to the main actor. If the port is in use the app runs without it, says so in the menu and retries every 5 s.
+- `URLCommandHandler` receives `dawmeterbridge://bridge|main|edit/toggle|show|hide` as `kAEGetURL` Apple Events (installed in `applicationWillFinishLaunching`, so a URL that launches the app is applied once it has started; a toggle among those shows, `ControlURL.launchResolved`). LaunchServices activates an app that opens a URL; `ActivationGuard` hands activation straight back to the app that was in front, so Live keeps the keyboard. Only when the user was already working in Settings or an alert as the URL arrived does that window keep it.
+- Both go through `AppController.perform(_:)`. Neither runs in `--snapshot` or `--demo-edit` runs.
+- `scripts/build-app.sh` declares the scheme (`CFBundleURLTypes`) and the icon (`Resources/AppIcon.icns`, drawn by `scripts/make-icons.swift`).
+
+The menu-bar icon is drawn in code (`Menu/MenuBarIcon.swift`): a miniature meter bridge, not signal bars. It is 23 × 14 pt: five segmented LED meters (6 segments each) stand on a base rail, with unlit segments faint. There is no outline, because an outlined housing read as a battery. The states are:
+- **shown:** meters lit at irregular levels, with peak-hold segments;
+- **waiting:** only each meter's bottom segment lit, while the DAW isn't connected;
+- **hidden:** every segment unlit and the rail dimmed. It is a template image drawn per backing scale, so it is crisp at 1x and 2x. The Stream Deck plugin's monochrome bridge icons (`scripts/make-icons.swift`) use the same design, and its Main action-list icon shows one wide L/R pair and a fader.
+
 One running copy per data folder: the app holds an exclusive `flock` on `.meterbridge.lock` next to layouts.json for its lifetime. A second launch on the same folder asks the running copy to show itself and quits. Runs with another `--data-dir` lock their own folder, and `--snapshot` runs take no lock.
 
 ## Testing and tooling
 
-- **`swift test`** uses Swift Testing (`import Testing`). It covers protocol coding, ballistics, mix focus, the volume curve, layout math, calibration, persistence and the simulator.
+- **`swift test`** uses Swift Testing (`import Testing`). It covers protocol coding, ballistics, mix focus, the volume curve, layout math, calibration, persistence, the simulator, the control protocol (coding, URLs, subscriber expiry, a loopback UDP server) and Main meter placement and migration.
 - **`python3 -m unittest`** in `AbletonRemoteScript/` runs the script's tests against a fake `Live` module.
-- **`scripts/build-app.sh`** builds `build/DAW Meter Bridge.app` (LSUIElement, ad-hoc signed). `OUTPUT_DIR=<dir>` puts the bundle elsewhere (verification builds, so they never replace the copy you are running) and `SCRATCH_PATH=<dir>` builds in its own scratch folder.
+- **`scripts/build-app.sh`** builds `build/DAW Meter Bridge.app` (LSUIElement, `dawmeterbridge://` scheme, app icon, ad-hoc signed). `OUTPUT_DIR=<dir>` puts the bundle elsewhere (verification builds, so they never replace the copy you are running) and `SCRATCH_PATH=<dir>` builds in its own scratch folder.
 - **`scripts/install-live-script.sh`** copies the script into `~/Music/Ableton/User Library/Remote Scripts/MeterBridge`.
 - The **simulator source** (menu → Source → Simulator) drives the whole UI without Live. It provides 32 tracks, a virtual 8-strip surface you can bank, and musical meter motion. It is also the demo/calibration mode.
 

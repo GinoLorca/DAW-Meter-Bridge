@@ -1,0 +1,78 @@
+{
+  "$schema": "https://schemas.elgato.com/streamdeck/plugins/manifest.json",
+  "UUID": "com.ginolorca.dawmeterbridge",
+  "Name": "DAW Meter Bridge",
+  "Version": "0.2.0.0",
+  "Author": "Gino Lorca",
+  "Description": "Show or hide the DAW Meter Bridge and its Main meter from Stream Deck. The keys always show the app's real state.",
+  "Category": "DAW Meter Bridge",
+  "CategoryIcon": "imgs/plugin/category",
+  "Icon": "imgs/plugin/icon",
+  "CodePath": "bin/plugin.js",
+  "Nodejs": {
+    "Version": "24"
+  },
+  "SDKVersion": 2,
+  "Software": {
+    "MinimumVersion": "7.1"
+  },
+  "OS": [
+    {
+      "Platform": "mac",
+      "MinimumVersion": "14.0"
+    }
+  ],
+  "ApplicationsToMonitor": {
+    "mac": [
+      "com.ginolorca.DAWMeterBridge"
+    ]
+  },
+  "Actions": [
+    {
+      "Name": "Show/Hide Bridge",
+      "UUID": "com.ginolorca.dawmeterbridge.bridge",
+      "Icon": "imgs/actions/bridge/icon",
+      "Tooltip": "Shows or hides the meter bridge. Starts DAW Meter Bridge if it is not running. The key lights up while the bridge is shown.",
+      "Controllers": [
+        "Keypad"
+      ],
+      "DisableAutomaticStates": true,
+      "SupportedInMultiActions": true,
+      "States": [
+        {
+          "Name": "Bridge hidden",
+          "Image": "imgs/actions/bridge/off",
+          "TitleAlignment": "top"
+        },
+        {
+          "Name": "Bridge shown",
+          "Image": "imgs/actions/bridge/on",
+          "TitleAlignment": "top"
+        }
+      ]
+    },
+    {
+      "Name": "Show/Hide Main Meter",
+      "UUID": "com.ginolorca.dawmeterbridge.main",
+      "Icon": "imgs/actions/main/icon",
+      "Tooltip": "Shows or hides the Main (master) track meter at the right edge of the bridge. The key lights up while the Main meter is shown.",
+      "Controllers": [
+        "Keypad"
+      ],
+      "DisableAutomaticStates": true,
+      "SupportedInMultiActions": true,
+      "States": [
+        {
+          "Name": "Main meter hidden",
+          "Image": "imgs/actions/main/off",
+          "TitleAlignment": "top"
+        },
+        {
+          "Name": "Main meter shown",
+          "Image": "imgs/actions/main/on",
+          "TitleAlignment": "top"
+        }
+      ]
+    }
+  ]
+}

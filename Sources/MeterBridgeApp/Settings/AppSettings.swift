@@ -18,6 +18,9 @@ struct AppSettings: Equatable, Sendable {
     /// read as linear amplitude ("≈" readouts) and the clip LED latches at 0.999. The simulator always
     /// uses linear amplitude. Edit settings.json (or the app's defaults) to enter a measured table.
     var liveMeterCalibration: MeterCalibration?
+    /// Set once every profile got a Main meter (version 0.2.0 adds one to profiles that have none, once,
+    /// so a Main meter the user deletes later stays deleted).
+    var addedMainMeters = false
 
     static let standard = AppSettings()
 }
@@ -26,6 +29,7 @@ extension AppSettings: Codable {
     private enum CodingKeys: String, CodingKey {
         case source, style, ballistics, mixFocus, isBridgeVisible = "bridgeVisible", simulatorUnitCount = "simulatorUnits"
         case liveMeterCalibration
+        case addedMainMeters = "mainMetersAdded"
     }
 
     init(from decoder: any Decoder) throws {
@@ -38,6 +42,7 @@ extension AppSettings: Codable {
         isBridgeVisible = (try? c.decodeIfPresent(Bool.self, forKey: .isBridgeVisible)) ?? defaults.isBridgeVisible
         simulatorUnitCount = (try? c.decodeIfPresent(Int.self, forKey: .simulatorUnitCount)) ?? defaults.simulatorUnitCount
         liveMeterCalibration = (try? c.decodeIfPresent(MeterCalibration.self, forKey: .liveMeterCalibration)) ?? nil
+        addedMainMeters = (try? c.decodeIfPresent(Bool.self, forKey: .addedMainMeters)) ?? defaults.addedMainMeters
     }
 
     func encode(to encoder: any Encoder) throws {
@@ -49,5 +54,6 @@ extension AppSettings: Codable {
         try c.encode(isBridgeVisible, forKey: .isBridgeVisible)
         try c.encode(simulatorUnitCount, forKey: .simulatorUnitCount)
         try c.encodeIfPresent(liveMeterCalibration, forKey: .liveMeterCalibration)
+        try c.encode(addedMainMeters, forKey: .addedMainMeters)
     }
 }

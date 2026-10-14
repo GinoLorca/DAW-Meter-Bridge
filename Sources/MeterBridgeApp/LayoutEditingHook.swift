@@ -123,9 +123,13 @@ protocol LayoutEditor: GroupPanelEventHandler {
     func endEditing(host: any LayoutEditHost)
     /// Extra items for the menu-bar menu while editing (e.g. "Calibrate…"), placed under "Edit Layout".
     func menuItems(host: any LayoutEditHost) -> [NSMenuItem]
+    /// Ends a drag in progress as its own undo step, as if the mouse went up now; later drag events of
+    /// that gesture are ignored. Called before a change from outside edit mode (a Stream Deck key, a URL).
+    func finishGesture()
 }
 
 extension LayoutEditor {
     func panelsDidChange(host: any LayoutEditHost) {}
     func menuItems(host: any LayoutEditHost) -> [NSMenuItem] { [] }
+    func finishGesture() {}
 }

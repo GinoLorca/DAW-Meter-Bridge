@@ -18,10 +18,12 @@ let package = Package(
         .target(name: "BridgeLayout", dependencies: ["MeterCore"]),
         // Core Animation strip/bank views.
         .target(name: "MeterRendering", dependencies: ["MeterCore"]),
+        // App control (docs/CONTROL.md): ctl messages, subscribers, dawmeterbridge:// URLs, UDP control server.
+        .target(name: "BridgeControl", dependencies: ["MeterSources"]),
         // Menu-bar app: panels, edit mode, hotkeys, settings.
         .executableTarget(
             name: "MeterBridgeApp",
-            dependencies: ["MeterCore", "BridgeProtocol", "MeterSources", "BridgeLayout", "MeterRendering"]
+            dependencies: ["MeterCore", "BridgeProtocol", "MeterSources", "BridgeLayout", "MeterRendering", "BridgeControl"]
         ),
 
         .testTarget(name: "MeterCoreTests", dependencies: ["MeterCore"]),
@@ -29,6 +31,7 @@ let package = Package(
         .testTarget(name: "MeterSourcesTests", dependencies: ["MeterSources", "BridgeProtocol", "MeterCore"]),
         .testTarget(name: "BridgeLayoutTests", dependencies: ["BridgeLayout", "MeterCore"]),
         .testTarget(name: "MeterRenderingTests", dependencies: ["MeterRendering", "MeterCore"]),
+        .testTarget(name: "BridgeControlTests", dependencies: ["BridgeControl", "MeterSources"]),
     ],
     swiftLanguageModes: [.v6]
 )

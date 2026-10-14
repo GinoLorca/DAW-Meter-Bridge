@@ -25,15 +25,20 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
         updateIcon()
     }
 
-    /// Refreshes the icon (filled while connected and shown) and its tooltip.
+    /// Refreshes the icon (a miniature meter bridge: lit while shown, at rest while the DAW isn't
+    /// connected, dimmed and unlit while hidden) and its tooltip.
     func updateIcon() {
         guard let controller, let button = statusItem.button else { return }
-        let lit = controller.snapshot.connection.isConnected && controller.isBridgeVisible
-        let image = NSImage(systemSymbolName: lit ? "chart.bar.fill" : "chart.bar", accessibilityDescription: "DAW Meter Bridge")
-        image?.isTemplate = true
-        button.image = image
-        button.title = image == nil ? "MB" : ""
-        button.toolTip = "DAW Meter Bridge\n\(controller.sourceStatusLine)"
+        let state: MenuBarIcon.State
+        if !controller.isBridgeVisible {
+            state = .hidden
+        } else {
+            state = controller.snapshot.connection.isConnected ? .shown : .waiting
+        }
+        button.image = MenuBarIcon.image(for: state)
+        button.title = ""
+        let visibility = controller.isBridgeVisible ? "shown" : "hidden"
+        button.toolTip = "DAW Meter Bridge (\(visibility))\n\(controller.sourceStatusLine)"
     }
 
     /// Opens the menu, as if the icon was clicked (a second launch asked this copy to show itself).
@@ -59,6 +64,13 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
             controller.isBridgeVisible ? "Hide Bridge" : "Show Bridge",
             key: "m", modifiers: Self.hotKeyModifiers
         ) { [weak controller] in controller?.toggleBridgeVisible() })
+        let mainItem = MenuActionItem(
+            "Show Main Meter",
+            state: controller.isMainMeterVisible ? .on : .off,
+            isEnabled: controller.activeProfile != nil
+        ) { [weak controller] in controller?.toggleMainMeter() }
+        mainItem.toolTip = "The Main track’s meter at the right edge of the bridge display. Stream Deck and URLs: dawmeterbridge://main/toggle"
+        items.append(mainItem)
         items.append(MenuActionItem(
             "Edit Layout", key: "e", modifiers: Self.hotKeyModifiers,
             state: controller.isEditing ? .on : .off

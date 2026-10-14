@@ -6,7 +6,8 @@ import CoreGraphics
 /// Both profiles sit along the bottom of the main display, where the LG ultrawide stands right behind
 /// the desk, until the user moves the bridge to a bar display and calibrates. The Bronx desk is
 /// UF8 | UF1 | UC1 left to right, so its profile uses the Bronx row template: the UF8 group plus the
-/// UF1 meter bound to the selected track, with the row centred under the display.
+/// UF1 meter bound to the selected track, with the row centred under the display. Both profiles also
+/// have a visible Main meter at the display's right edge (`MainMeter`).
 enum DefaultLayouts {
     static let bronxName = "Bronx — UF8"
     static let brooklynName = "Brooklyn — WING"
@@ -18,9 +19,19 @@ enum DefaultLayouts {
     /// "Bronx — UF8" (active, the UF8 | UF1 | UC1 row) and "Brooklyn — WING", both on `display`,
     /// `bottomInset` points above its bottom edge (the height of a Dock that is always shown there).
     static func document(on display: ConnectedDisplay, bottomInset: CGFloat = 0) -> LayoutDocument {
-        let bronx = profile(named: bronxName, template: .bronxRow, on: display, bottomInset: bottomInset)
-        let brooklyn = profile(named: brooklynName, template: .wingMCUPlus2Extenders, on: display, bottomInset: bottomInset)
+        var bronx = profile(named: bronxName, template: .bronxRow, on: display, bottomInset: bottomInset)
+        var brooklyn = profile(named: brooklynName, template: .wingMCUPlus2Extenders, on: display, bottomInset: bottomInset)
+        let fallback = mainMeterFallback(on: display, bottomInset: bottomInset)
+        bronx.addMainMeter(fallback: fallback)
+        brooklyn.addMainMeter(fallback: fallback)
         return LayoutDocument(profiles: [bronx, brooklyn], activeProfileID: bronx.id, selectionMode: .automatic)
+    }
+
+    /// Where a Main meter goes in a profile without groups: the bottom of `display`, at the first-run height.
+    static func mainMeterFallback(on display: ConnectedDisplay, bottomInset: CGFloat = 0) -> MainMeterFallback {
+        let height = min(meterHeight, display.fingerprint.pointSize.height)
+        let y = min(max(0, bottomInset), max(0, display.fingerprint.pointSize.height - height))
+        return MainMeterFallback(display: display.fingerprint, y: y, height: height)
     }
 
     /// A one-display profile for `template`, centred along the bottom of `display` (raised by

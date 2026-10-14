@@ -20,15 +20,24 @@ public enum UDPSocketError: Error, Hashable, Sendable {
     }
 }
 
-/// A datagram and the time it was read (`ProcessInfo.systemUptime`).
-struct ReceivedDatagram: Sendable {
-    var data: Data
-    var time: TimeInterval
+/// A datagram, the time it was read (`ProcessInfo.systemUptime`) and the port it came from.
+public struct ReceivedDatagram: Sendable {
+    public var data: Data
+    public var time: TimeInterval
+    /// The sender's UDP port (on 127.0.0.1, the only address the socket is bound to); nil if unknown.
+    public var senderPort: UInt16?
+
+    public init(data: Data, time: TimeInterval, senderPort: UInt16? = nil) {
+        self.data = data
+        self.time = time
+        self.senderPort = senderPort
+    }
 }
 
 /// A UDP socket bound to 127.0.0.1. All socket I/O runs on a private serial queue; received
-/// datagrams are handed to `onReceive` in batches on that queue.
-final class UDPEndpoint: @unchecked Sendable {
+/// datagrams are handed to `onReceive` in batches on that queue. Used by `LiveSource` and by the app's
+/// control server (BridgeControl).
+public final class UDPEndpoint: @unchecked Sendable {
     // @unchecked: `fd` and `buffer` are only touched on `queue` after init returns, and
     // `readSource` is only set during init and cancelled through the queue.
     private let queue: DispatchQueue
@@ -39,10 +48,10 @@ final class UDPEndpoint: @unchecked Sendable {
     private var isClosed = false
 
     /// The port actually bound (differs from the requested one when that was 0).
-    let port: UInt16
+    public let port: UInt16
 
     /// Opens a non-blocking UDP socket on 127.0.0.1:`port` (0 = any free port) and starts reading.
-    init(port requestedPort: UInt16, label: String, onReceive: @escaping @Sendable ([ReceivedDatagram]) -> Void) throws(UDPSocketError) {
+    public init(port requestedPort: UInt16, label: String, onReceive: @escaping @Sendable ([ReceivedDatagram]) -> Void) throws(UDPSocketError) {
         queue = DispatchQueue(label: label, qos: .userInteractive)
         let fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)
         guard fd >= 0 else { throw .system(call: "socket", code: errno) }
@@ -93,7 +102,7 @@ final class UDPEndpoint: @unchecked Sendable {
     }
 
     /// Sends one datagram to 127.0.0.1:`port`. Errors are reported to `onError` on the socket queue.
-    func send(_ data: Data, toPort port: UInt16, onError: (@Sendable (UDPSocketError) -> Void)? = nil) {
+    public func send(_ data: Data, toPort port: UInt16, onError: (@Sendable (UDPSocketError) -> Void)? = nil) {
         queue.async { [weak self] in
             guard let self, !self.isClosed else { return }
             var address = Self.loopback(port: port)
@@ -110,7 +119,7 @@ final class UDPEndpoint: @unchecked Sendable {
 
     /// Stops reading and closes the socket. Returns once the descriptor is closed, so the port can
     /// be bound again right away.
-    func close() {
+    public func close() {
         let source: (any DispatchSourceRead)? = queue.sync {
             guard !isClosed else { return nil }
             isClosed = true
@@ -125,14 +134,24 @@ final class UDPEndpoint: @unchecked Sendable {
     private func drain() -> [ReceivedDatagram] {
         var datagrams: [ReceivedDatagram] = []
         while !isClosed {
-            let count = buffer.withUnsafeMutableBytes { recv(fd, $0.baseAddress, $0.count, 0) }
+            var sender = sockaddr_in()
+            var senderLength = socklen_t(MemoryLayout<sockaddr_in>.size)
+            let count = buffer.withUnsafeMutableBytes { bytes in
+                withUnsafeMutablePointer(to: &sender) {
+                    $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                        recvfrom(fd, bytes.baseAddress, bytes.count, 0, $0, &senderLength)
+                    }
+                }
+            }
             if count < 0 {
                 if errno == EINTR { continue }
                 break // EAGAIN/EWOULDBLOCK: nothing more to read; other errors: try again next event.
             }
+            let hasSender = senderLength >= socklen_t(MemoryLayout<sockaddr_in>.size) && sender.sin_family == sa_family_t(AF_INET)
             datagrams.append(ReceivedDatagram(
                 data: Data(buffer[0..<count]),
-                time: ProcessInfo.processInfo.systemUptime
+                time: ProcessInfo.processInfo.systemUptime,
+                senderPort: hasSender ? UInt16(bigEndian: sender.sin_port) : nil
             ))
         }
         return datagrams

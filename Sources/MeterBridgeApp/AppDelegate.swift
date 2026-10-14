@@ -14,10 +14,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// One running copy per data folder (see `InstanceLock`); nil for `--snapshot` runs.
     private var instanceLock: InstanceLock?
     private var secondLaunchObserver: NSObjectProtocol?
+    /// The control protocol for the Stream Deck plugin (docs/CONTROL.md); menu-bar runs only.
+    private var controlService: ControlService?
+    /// `dawmeterbridge://` URLs; menu-bar runs only.
+    private var urlHandler: URLCommandHandler?
 
     init(options: LaunchOptions) {
         self.options = options
         super.init()
+    }
+
+    /// Registers for `dawmeterbridge://` URLs before launching finishes, so a URL that launches the app
+    /// is applied too (once the controller has started). Headless runs ignore URLs.
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        guard options.snapshotDirectory == nil, options.demoEditDirectory == nil else { return }
+        let handler = URLCommandHandler()
+        handler.install()
+        urlHandler = handler
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -56,9 +69,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let settingsWindow = SettingsWindowController(controller: controller)
         self.settingsWindow = settingsWindow
         statusMenu.openSettings = { [weak settingsWindow] in settingsWindow?.show() }
-        controller.onStatusChange = { [weak statusMenu, weak settingsWindow] in
+        let controlService = ControlService(controller: controller, port: options.controlPort)
+        self.controlService = controlService
+        controller.onStatusChange = { [weak statusMenu, weak settingsWindow, weak controlService] in
             statusMenu?.updateIcon()
             settingsWindow?.refresh()
+            controlService?.stateMayHaveChanged()
         }
         controller.onNotice = { title, message in NoticePresenter.show(title: title, message: message) }
         NSApp.mainMenu = Self.makeMainMenu()
@@ -66,6 +82,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusMenu.updateIcon()
         registerHotKeys(for: controller)
         secondLaunchObserver = instanceLock?.observeSecondLaunches { [weak self] in self?.showForSecondLaunch() }
+        controlService.start()
+        urlHandler?.perform = { [weak controller] command in controller?.perform(command) }
     }
 
     /// Takes the data folder's instance lock. Returns false when another copy of the app holds it; that
@@ -132,6 +150,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         if let secondLaunchObserver { DistributedNotificationCenter.default().removeObserver(secondLaunchObserver) }
+        controlService?.stop()
+        urlHandler?.uninstall()
         hotKeys.forEach { $0.unregister() }
         hotKeys = []
         controller?.shutdown()

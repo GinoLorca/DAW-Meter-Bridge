@@ -45,6 +45,25 @@ extension AppController {
             document = DefaultLayouts.document(on: display, bottomInset: isHeadless ? 0 : display.bottomDockInset)
             saveLayouts()
         }
+        addMainMetersOnce()
+    }
+
+    /// Version 0.2.0 gives every profile without a Main meter a visible one, once: the settings remember
+    /// it (`addedMainMeters`), so a Main meter the user deletes later stays deleted. First-run layouts
+    /// already have one. Snapshot runs apply it in memory only; when layouts.json can't be saved it is
+    /// tried again next launch.
+    private func addMainMetersOnce() {
+        guard !settings.addedMainMeters else { return }
+        let display = displayManager.mainDisplay ?? Self.standInDisplay
+        let fallback = DefaultLayouts.mainMeterFallback(on: display, bottomInset: isHeadless ? 0 : display.bottomDockInset)
+        let added = document.addMainMetersWhereMissing(fallback: fallback)
+        if added > 0 {
+            appLog.info("Added a Main meter to \(added) profile(s)")
+            saveLayouts()
+        }
+        guard canSaveLayouts, !isHeadless else { return }
+        settings.addedMainMeters = true
+        saveSettings()
     }
 
     /// Snapshot mode: decodes layouts.json without the store's recovery, which would move a bad file
@@ -170,17 +189,22 @@ extension AppController {
     // MARK: - Moving to another display
 
     /// "Slide it over": moves every group of the active profile onto `display`, keeping physical size
-    /// and spacing when both displays' scales are known (else proportionally), and saves.
+    /// and spacing when both displays' scales are known (else proportionally), puts the Main meter back
+    /// at the new display's right edge, and saves.
     func moveBridge(to display: ConnectedDisplay) {
         guard var profile = document.activeProfile else { return }
         let result = profile.moveAllGroups(to: display.fingerprint, targetPointsPerMillimeter: display.pointsPerMillimeter)
+        profile.reanchorMainMeters()
         performLayoutChange("Move Bridge to \(display.name)") { $0.upsert(profile) }
         saveLayouts()
 
         var message = result.mode == .physical
             ? "The meters kept their physical size and spacing."
             : "The meters were scaled to the new display because its physical size isn’t known yet."
-        let offscreen = result.offscreenGroupIDs.compactMap { id in profile.group(withID: id)?.name }
+        let bounds = display.fingerprint.bounds
+        let offscreen = result.offscreenGroupIDs.compactMap { id in
+            profile.group(withID: id).flatMap { $0.frame.intersects(bounds) ? nil : $0.name }
+        }
         if !offscreen.isEmpty {
             message += " Not on the display (too wide to fit): \(offscreen.joined(separator: ", "))."
         }
